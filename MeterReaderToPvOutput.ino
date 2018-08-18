@@ -3,22 +3,27 @@
 
 ///////// CHANGEABLE VALUES /////////
 
-char importMultiplier[] = "1.25";
-char generationMultiplier[] = "1.0";
+const char importMultiplier[] = "1.25";
+const char generationMultiplier[] = "1.0";
 
-char pompeii[] = "192.168.0.16";
-int pompeiiPort = 80;
+const char pompeii[] = "192.168.0.16";
+const int pompeiiPort = 28080;
 
-long millisecondsBetweenCalls = 60000L;
+const unsigned long millisecondsBetweenCalls = 60000L;
+
+const char pompeiiService[] = "/meter";
 
 ///////// CHANGEABLE VALUES ABOVE /////////
 
 EthernetClient pompeiiClient;
-byte mac[] = {0x90, 0xA2, 0xDA, 0x0F, 0xA1, 0xE6};
-char pompeiiService[] = "/pvoutput-post-consumption.php";
+const byte mac[] = {0x90, 0xA2, 0xDA, 0x0F, 0xA1, 0xE6};
 
 unsigned long importImpulseCount = 0;
 unsigned long generationImpulseCount = 0;
+
+unsigned long importImpulseCountSinceLastUpload = 0;
+unsigned long generationImpulseCountSinceLastUpload = 0;
+unsigned long millisecondsBetweenCallsSinceLastUpload = 0;
 
 unsigned long lastTimeUploaded = millis();
 unsigned long previousTime = 0UL;
@@ -32,8 +37,6 @@ const int generationSensorPin = 0;
 
 const int voltageSensorPin = A0;
 
-unsigned long millisecondsPerMinute = 60000L;
-
 void setup() {
   Serial.begin(9600);
   connectToEthernet();
@@ -41,7 +44,8 @@ void setup() {
 
 void connectToEthernet()
 {
-    // attempt to connect to Wifi network:
+  unsigned long millisecondsPerMinute = 60000L;
+  // attempt to connect to Wifi network:
   // start the Ethernet connection:
   if (Ethernet.begin(mac) == 0) {
     Serial.println("Failed to configure Ethernet using DHCP waiting 1 minute");
@@ -54,7 +58,7 @@ void connectToEthernet()
 
       if (Ethernet.begin(mac) == 0) {
         Serial.println("Failed to configure Ethernet using DHCP stopping - will need reset");
-        while(true);
+        while (true);
       }
     }
 
@@ -92,13 +96,13 @@ void attachInterrupts()
 boolean isTimeToUploadData() {
   unsigned long currentTime = millis();
 
-  if(currentTime < previousTime)  {
+  if (currentTime < previousTime)  {
     lastTimeUploaded = currentTime;
   }
-  
+
   previousTime = currentTime;
 
-  if( (currentTime - lastTimeUploaded) >= millisecondsBetweenCalls) {
+  if ( (currentTime - lastTimeUploaded) >= millisecondsBetweenCalls) {
     Serial.println("Time to upload");
     lastTimeUploaded = currentTime;
     return true;
@@ -124,79 +128,76 @@ void sendResultsToPompeii() {
   if (pompeiiClient.connect(pompeii, pompeiiPort)) {
     Serial.println("connected to pompeii");
     // Make a HTTP request:
-    pompeiiClient.print("POST ");
-    pompeiiClient.print(pompeiiService);
-    pompeiiClient.println(" HTTP/1.1");
-    pompeiiClient.print("Host: ");
-    pompeiiClient.print(pompeii);
-    pompeiiClient.print(":");
-    pompeiiClient.println(pompeiiPort);
-    pompeiiClient.println("Accept: text/html");
-    pompeiiClient.println("Content-Type: application/x-www-form-urlencoded; charset=UTF-8");
-    pompeiiClient.print("Content-Length: ");
-    pompeiiClient.println(postData.length());
+    pompeiiClient.println("POST " + String(pompeiiService) + " HTTP/1.1");
+    pompeiiClient.println("Host: " + String(pompeii) + ":" + pompeiiPort);
+    pompeiiClient.println("Content-Type: application/json");
+    pompeiiClient.println("Content-Length: " + String(postData.length()));
     pompeiiClient.println("Pragma: no-cache");
     pompeiiClient.println("Cache-Control: no-cache");
     pompeiiClient.println("Connection: close");
-    pompeiiClient.println("X-Data-Source: METER");
     pompeiiClient.println();
 
     pompeiiClient.println(postData);
     pompeiiClient.println();
 
+    delay(10);
     pompeiiClient.stop();
     pompeiiClient.flush();
     Serial.println("Called pompeii");
+
+    uploadSuccessResetCounters();
   }
 }
 
 String calculateImportWattsAndResetFlashes()
 {
-  if (importImpulseCount == 0UL) {
+  importImpulseCountSinceLastUpload = importImpulseCountSinceLastUpload + importImpulseCount;
+  importImpulseCount = 0UL;
+
+  if (importImpulseCountSinceLastUpload == 0UL) {
     return "0";
   }
 
-  String wattImpulses = String(importImpulseCount);
-  Serial.print("Calculated Import Watts: ");
-  Serial.println(wattImpulses);
-  
-  importImpulseCount = 0UL;
-  
-  return wattImpulses;
+  return String(importImpulseCountSinceLastUpload);
 }
 
 String calculateGenerationWattsAndResetFlashes()
 {
-  if (generationImpulseCount == 0UL) {
+  generationImpulseCountSinceLastUpload = generationImpulseCountSinceLastUpload + generationImpulseCount;
+  generationImpulseCount = 0UL;
+
+  if (generationImpulseCountSinceLastUpload == 0UL) {
     return "0";
   }
 
-  String wattImpulses = String(generationImpulseCount);
-  Serial.print("Calculated Generation Watts: ");
-  Serial.println(wattImpulses);
-  
-  generationImpulseCount = 0UL;
-  
-  return wattImpulses;
+  return String(generationImpulseCountSinceLastUpload);
 }
 
 String getPostData()
 {
   String importWatts = calculateImportWattsAndResetFlashes();
   String generationWatts = calculateGenerationWattsAndResetFlashes();
-  
-  return "importImpulses=" + importWatts + "&generationImpulses=" + generationWatts + "&msBetweenCalls=" + millisecondsBetweenCalls 
-      + "&importMultiplier=" + importMultiplier + "&generationMultiplier=" + generationMultiplier + "&mainsVoltage=" + readMainsVoltage();
+  millisecondsBetweenCallsSinceLastUpload = millisecondsBetweenCallsSinceLastUpload + millisecondsBetweenCalls;
+  String milliseconds = String(millisecondsBetweenCallsSinceLastUpload);
+
+  return "{\"importImpulses\":" + importWatts + ",\"generationImpulses\":" + generationWatts + ",\"msBetweenCalls\":" + milliseconds
+         + ",\"importMultiplier\":" + importMultiplier + ",\"generationMultiplier\":" + generationMultiplier + ",\"mainsVoltage\":" + readMainsVoltage() + "}";
 }
 
 String readMainsVoltage()
 {
   double readAnalog = ((double)analogRead(voltageSensorPin) * (5.0 / 1023.0));
-  Serial.println(readAnalog);
+  //Serial.println(readAnalog);
   double mainsVoltage = ((readAnalog * 49.68d) + 24.04d) - 1.7d;
-  
+
   char tempChar[10];
-  dtostrf(mainsVoltage,3,2,tempChar);
-  
+  dtostrf(mainsVoltage, 3, 2, tempChar);
+
   return String(tempChar);
+}
+
+void uploadSuccessResetCounters() {
+  importImpulseCountSinceLastUpload = 0UL;
+  generationImpulseCountSinceLastUpload = 0UL;
+  millisecondsBetweenCallsSinceLastUpload = 0UL;
 }
