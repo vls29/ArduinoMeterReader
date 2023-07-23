@@ -3,11 +3,12 @@
 
 ///////// CHANGEABLE VALUES /////////
 
-const char importMultiplier[] = "1.25";
+const char importMultiplier[] = "1.0";
 const char generationMultiplier[] = "1.0";
 
 const char pompeii[] = "192.168.0.16";
 const int pompeiiPort = 28080;
+const int httpRequestDelay = 20;
 
 const unsigned long millisecondsBetweenCalls = 60000L;
 
@@ -16,7 +17,7 @@ const char pompeiiService[] = "/meter";
 ///////// CHANGEABLE VALUES ABOVE /////////
 
 EthernetClient pompeiiClient;
-const byte mac[] = {0x90, 0xA2, 0xDA, 0x0F, 0xA1, 0xE6};
+byte mac[] = {0x90, 0xA2, 0xDA, 0x0F, 0xA1, 0xE6};
 
 unsigned long importImpulseCount = 0;
 unsigned long generationImpulseCount = 0;
@@ -36,6 +37,7 @@ const int importSensorPin = 1;
 const int generationSensorPin = 0;
 
 const int voltageSensorPin = A0;
+IPAddress ip(192,168,0,12);
 
 void setup() {
   Serial.begin(9600);
@@ -47,6 +49,18 @@ void connectToEthernet()
   unsigned long millisecondsPerMinute = 60000L;
   // attempt to connect to Wifi network:
   // start the Ethernet connection:
+  bool connectedToNetwork = false;
+  while(!connectedToNetwork) {
+    Serial.println("Attempting to connect to network...");
+
+    if (Ethernet.begin(mac) == 0) {
+        Serial.println("Failed to connect, trying again...");
+    } else {
+        Serial.println("Connected successfully");
+        connectedToNetwork = true;
+    }
+  }
+  /*for (int i = 0; i <= 255; i++) {
   if (Ethernet.begin(mac) == 0) {
     Serial.println("Failed to configure Ethernet using DHCP waiting 1 minute");
     delay(millisecondsPerMinute);
@@ -62,7 +76,7 @@ void connectToEthernet()
       }
     }
 
-  }
+  }*/
   // give the Ethernet shield a second to initialize:
   delay(1000);
   Serial.println("connecting...");
@@ -140,7 +154,7 @@ void sendResultsToPompeii() {
     pompeiiClient.println(postData);
     pompeiiClient.println();
 
-    delay(10);
+    delay(httpRequestDelay);
     pompeiiClient.stop();
     pompeiiClient.flush();
     Serial.println("Called pompeii");
