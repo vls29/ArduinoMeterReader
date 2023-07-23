@@ -6,17 +6,17 @@
 const char importMultiplier[] = "1.0";
 const char generationMultiplier[] = "1.0";
 
-const char pompeii[] = "192.168.0.16";
-const int pompeiiPort = 28080;
+const char serverAddress[] = "home-monitoring.scaleys.co.uk";
+const int serverPort = 80;
 const int httpRequestDelay = 20;
 
 const unsigned long millisecondsBetweenCalls = 60000L;
 
-const char pompeiiService[] = "/meter";
+const char serviceEndpoint[] = "/meter";
 
 ///////// CHANGEABLE VALUES ABOVE /////////
 
-EthernetClient pompeiiClient;
+EthernetClient ethernetClient;
 byte mac[] = {0x90, 0xA2, 0xDA, 0x0F, 0xA1, 0xE6};
 
 unsigned long importImpulseCount = 0;
@@ -60,23 +60,7 @@ void connectToEthernet()
         connectedToNetwork = true;
     }
   }
-  /*for (int i = 0; i <= 255; i++) {
-  if (Ethernet.begin(mac) == 0) {
-    Serial.println("Failed to configure Ethernet using DHCP waiting 1 minute");
-    delay(millisecondsPerMinute);
 
-    if (Ethernet.begin(mac) == 0)
-    {
-      Serial.println("Failed to configure Ethernet using DHCP waiting 1 more minute");
-      delay(millisecondsPerMinute);
-
-      if (Ethernet.begin(mac) == 0) {
-        Serial.println("Failed to configure Ethernet using DHCP stopping - will need reset");
-        while (true);
-      }
-    }
-
-  }*/
   // give the Ethernet shield a second to initialize:
   delay(1000);
   Serial.println("connecting...");
@@ -91,7 +75,7 @@ void loop() {
   if (isTimeToUploadData())
   {
     Serial.println("Uploading data");
-    sendResultsToPompeii();
+    sendResultsToServer();
   }
 }
 
@@ -133,31 +117,31 @@ void flashGeneration() {
   generationImpulseCount++;
 }
 
-void sendResultsToPompeii() {
-  Serial.println("sendResultsToPompeii");
+void sendResultsToServer() {
+  Serial.println("sendResultsToServer");
 
   String postData = getPostData();
   Serial.println(postData);
 
-  if (pompeiiClient.connect(pompeii, pompeiiPort)) {
-    Serial.println("connected to pompeii");
+  if (ethernetClient.connect(serverAddress, serverPort)) {
+    Serial.println("connected to server");
     // Make a HTTP request:
-    pompeiiClient.println("POST " + String(pompeiiService) + " HTTP/1.1");
-    pompeiiClient.println("Host: " + String(pompeii) + ":" + pompeiiPort);
-    pompeiiClient.println("Content-Type: application/json");
-    pompeiiClient.println("Content-Length: " + String(postData.length()));
-    pompeiiClient.println("Pragma: no-cache");
-    pompeiiClient.println("Cache-Control: no-cache");
-    pompeiiClient.println("Connection: close");
-    pompeiiClient.println();
+    ethernetClient.println("POST " + String(serviceEndpoint) + " HTTP/1.1");
+    ethernetClient.println("Host: " + String(serverAddress) + ":" + serverPort);
+    ethernetClient.println("Content-Type: application/json");
+    ethernetClient.println("Content-Length: " + String(postData.length()));
+    ethernetClient.println("Pragma: no-cache");
+    ethernetClient.println("Cache-Control: no-cache");
+    ethernetClient.println("Connection: close");
+    ethernetClient.println();
 
-    pompeiiClient.println(postData);
-    pompeiiClient.println();
+    ethernetClient.println(postData);
+    ethernetClient.println();
 
     delay(httpRequestDelay);
-    pompeiiClient.stop();
-    pompeiiClient.flush();
-    Serial.println("Called pompeii");
+    ethernetClient.stop();
+    ethernetClient.flush();
+    Serial.println("Called server");
 
     uploadSuccessResetCounters();
   }
